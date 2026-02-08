@@ -4,6 +4,9 @@
 # Claude Code settings
 .claude/
 
+# PCF components (user-generated)
+PCF*/
+
 # Dependencies
 node_modules/
 
