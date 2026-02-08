@@ -37,6 +37,21 @@ const log = {
 
 const TOKEN_CACHE_PATH = path.join(process.cwd(), '.token-cache.json');
 
+// Sensitive keywords to redact in environment variable values
+const SENSITIVE_KEYWORDS = ['clientsecret', 'secret', 'password', 'pass', 'apikey', 'token', 'credential'];
+
+function isSensitiveVariable(name) {
+  const lowerName = (name || '').toLowerCase();
+  return SENSITIVE_KEYWORDS.some(keyword => lowerName.includes(keyword));
+}
+
+function redactValue(name, value) {
+  if (isSensitiveVariable(name) && value && value !== '(not set)') {
+    return '[REDACTED]';
+  }
+  return value;
+}
+
 // MSAL Configuration
 const MSAL_CONFIG = {
   auth: {
@@ -156,7 +171,7 @@ class EnvironmentClient {
           name: d.schemaname,
           displayName: d.displayname,
           type: d.type,
-          value: value,
+          value: redactValue(d.schemaname, value),
         });
       }
 
