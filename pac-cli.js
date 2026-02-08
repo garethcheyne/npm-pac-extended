@@ -464,21 +464,129 @@ function cmdStatus() {
 async function cmdPcfInit() {
   log.title('PAC - Initialize PCF Component');
 
-  const name = await prompt('Component name');
-  const namespace = await prompt('Namespace', process.env.SOLUTION_PUBLISHER_PREFIX || 'New');
-  const template = await prompt('Template (field/dataset)', 'field');
+  const hasEnv = fs.existsSync('.env');
+  const hasPublisher = !!process.env.SOLUTION_PUBLISHER_PREFIX;
 
-  const outputPath = process.argv[3] || `./${name}`;
+  // Show current configuration status
+  console.log('\n' + colors.bold('Configuration Status:'));
+  console.log('─'.repeat(50));
 
+  if (hasEnv && hasPublisher) {
+    console.log(colors.green('  ✓ .env found'));
+    console.log(colors.green(`  ✓ Publisher prefix: ${process.env.SOLUTION_PUBLISHER_PREFIX}`));
+    if (process.env.SOLUTION_NAME) {
+      console.log(colors.green(`  ✓ Solution: ${process.env.SOLUTION_NAME}`));
+    }
+    if (process.env.ENV_DEV_URL) {
+      console.log(colors.green(`  ✓ Dev environment: ${process.env.ENV_DEV_URL}`));
+    }
+    console.log();
+  } else if (hasEnv && !hasPublisher) {
+    console.log(colors.yellow('  ! .env found but missing publisher prefix'));
+    console.log(colors.dim('    Run: pac-ext init to configure'));
+    console.log();
+  } else {
+    console.log(colors.yellow('  ! No .env file found'));
+    console.log(colors.dim('    Tip: Run pac-ext init first to set up your project'));
+    console.log();
+  }
+
+  // Component details
+  console.log(colors.bold('Component Details:'));
+  console.log('─'.repeat(50));
+
+  // Get component name (required)
+  let name = process.argv[3];
+  if (!name) {
+    name = await prompt('  Component name');
+  } else {
+    console.log(`  Component name: ${colors.cyan(name)}`);
+  }
+
+  if (!name || name.trim() === '') {
+    log.error('Component name is required');
+    return;
+  }
+
+  // Get namespace (use publisher prefix from .env or ask)
+  let namespace;
+  if (hasPublisher) {
+    const useDefault = await promptYN(`  Use namespace "${process.env.SOLUTION_PUBLISHER_PREFIX}"?`, true);
+    if (useDefault) {
+      namespace = process.env.SOLUTION_PUBLISHER_PREFIX;
+    } else {
+      namespace = await prompt('  Namespace');
+    }
+  } else {
+    console.log();
+    console.log(colors.dim('  Namespace is typically your publisher prefix (e.g., contoso, acme)'));
+    namespace = await prompt('  Namespace');
+  }
+
+  if (!namespace || namespace.trim() === '') {
+    namespace = 'New';
+    console.log(colors.dim(`  Using default namespace: ${namespace}`));
+  }
+
+  // Get template type
+  console.log();
+  console.log(colors.bold('  Template Type:'));
+  console.log(colors.dim('    field   - For form fields (text, number, date, etc.)'));
+  console.log(colors.dim('    dataset - For grids and lists (subgrids, views)'));
+  console.log();
+
+  const template = await prompt('  Template (field/dataset)', 'field');
+
+  // Output path
+  const outputPath = `./${name}`;
+
+  // Summary before creation
+  console.log();
+  console.log(colors.bold('Summary:'));
+  console.log('─'.repeat(50));
+  console.log(`  Name:      ${colors.cyan(name)}`);
+  console.log(`  Namespace: ${colors.cyan(namespace)}`);
+  console.log(`  Template:  ${colors.cyan(template)}`);
+  console.log(`  Output:    ${colors.cyan(outputPath)}`);
+  console.log();
+
+  const proceed = await promptYN('  Create component?', true);
+  if (!proceed) {
+    log.warn('Cancelled');
+    return;
+  }
+
+  // Create the component
+  console.log();
   log.info(`Creating PCF component: ${namespace}.${name}`);
-  runPac(`pcf init --name "${name}" --namespace "${namespace}" --template "${template}" --outputDirectory "${outputPath}"`);
 
-  log.success(`PCF component created at: ${outputPath}`);
-  console.log('\nNext steps:');
-  console.log(`  1. cd ${outputPath}`);
-  console.log('  2. npm install');
-  console.log('  3. npm run build');
-  console.log('  4. npm run pac:pcf:push');
+  try {
+    runPac(`pcf init --name "${name}" --namespace "${namespace}" --template "${template}" --outputDirectory "${outputPath}"`);
+  } catch (error) {
+    log.error('Failed to create PCF component');
+    return;
+  }
+
+  // Success message with next steps
+  console.log();
+  console.log(colors.green('─'.repeat(50)));
+  log.success('PCF component created successfully!');
+  console.log(colors.green('─'.repeat(50)));
+
+  console.log();
+  console.log(colors.bold('Next Steps:'));
+  console.log();
+  console.log(`  ${colors.cyan('1.')} cd ${name}`);
+  console.log(`  ${colors.cyan('2.')} npm install`);
+  console.log(`  ${colors.cyan('3.')} ${colors.dim('# Edit index.ts to build your component')}`);
+  console.log(`  ${colors.cyan('4.')} npm run build`);
+  console.log(`  ${colors.cyan('5.')} pac-ext pcf-push`);
+  console.log();
+
+  if (!hasEnv) {
+    console.log(colors.yellow('Tip: Run pac-ext init in your project root to configure environments'));
+    console.log();
+  }
 }
 
 function cmdPcfPush() {
