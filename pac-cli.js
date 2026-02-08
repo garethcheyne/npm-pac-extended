@@ -845,6 +845,7 @@ async function cmdAudit() {
   let masterEnv = null;
   let compareEnvs = [];
   let saveReport = false;
+  let deepMode = false;
   let collectingCompare = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -860,6 +861,8 @@ async function cmdAudit() {
         collectingCompare = true;
       } else if (arg === '--save' || arg === '-s') {
         saveReport = true;
+      } else if (arg === '--deep' || arg === '-d') {
+        deepMode = true;
       }
     } else if (collectingCompare) {
       // Collect all non-flag arguments as environments
@@ -879,6 +882,7 @@ async function cmdAudit() {
     console.log(colors.bold('Options:'));
     console.log('  --master, -m   Master/baseline environment (dev/test/prod or URL)');
     console.log('  --compare, -c  Environments to compare (space or comma separated)');
+    console.log('  --deep, -d     Deep comparison (table columns, field properties)');
     console.log('  --save, -s     Save report to HTML and JSON');
     console.log();
     console.log(colors.bold('Examples:'));
@@ -938,7 +942,7 @@ async function cmdAudit() {
 
   // Run audit
   const { EnvironmentAudit } = require('./environment-audit.js');
-  const audit = new EnvironmentAudit(master.url, master.name, targets);
+  const audit = new EnvironmentAudit(master.url, master.name, targets, { deep: deepMode });
 
   try {
     await audit.runAudit();

@@ -136,13 +136,31 @@ class EnvironmentClient {
 
   async getEnvironmentVariables() {
     try {
-      const defs = await this.fetch('environmentvariabledefinitions?$select=schemaname,displayname,type&$expand=environmentvariablevalues($select=value)');
-      return defs.value.map(d => ({
-        name: d.schemaname,
-        displayName: d.displayname,
-        type: d.type,
-        value: d.environmentvariablevalues?.[0]?.value || '(not set)',
-      }));
+      // First get definitions
+      const defs = await this.fetch('environmentvariabledefinitions?$select=schemaname,displayname,type,environmentvariabledefinitionid');
+      const results = [];
+
+      for (const d of defs.value) {
+        let value = '(not set)';
+        try {
+          // Get value separately
+          const vals = await this.fetch(`environmentvariablevalues?$filter=_environmentvariabledefinitionid_value eq '${d.environmentvariabledefinitionid}'&$select=value&$top=1`);
+          if (vals.value && vals.value.length > 0) {
+            value = vals.value[0].value;
+          }
+        } catch (e) {
+          // Value not found
+        }
+
+        results.push({
+          name: d.schemaname,
+          displayName: d.displayname,
+          type: d.type,
+          value: value,
+        });
+      }
+
+      return results;
     } catch (e) {
       console.log(colors.dim(`    [${this.name}] Environment variables: ${e.message}`));
       return [];
@@ -151,7 +169,7 @@ class EnvironmentClient {
 
   async getPlugins() {
     try {
-      const data = await this.fetch('pluginassemblies?$filter=ishidden eq false&$select=name,version,publickeytoken,isolationmode');
+      const data = await this.fetch('pluginassemblies?$select=name,version,publickeytoken,isolationmode&$top=500');
       return data.value.map(p => ({
         name: p.name,
         version: p.version,
@@ -166,7 +184,7 @@ class EnvironmentClient {
 
   async getWebResources() {
     try {
-      const data = await this.fetch('webresourceset?$filter=ishidden eq false&$select=name,displayname,webresourcetype&$top=500');
+      const data = await this.fetch('webresourceset?$select=name,displayname,webresourcetype&$top=500');
       return data.value.map(w => ({
         name: w.name,
         displayName: w.displayname,
@@ -246,16 +264,49 @@ class EnvironmentClient {
       return [];
     }
   }
+
+  async getTableColumns(tableName) {
+    try {
+      const data = await this.fetch(`EntityDefinitions(LogicalName='${tableName}')/Attributes?$select=LogicalName,DisplayName,AttributeType,RequiredLevel,MaxLength,MinValue,MaxValue,Precision`);
+      return data.value.map(a => ({
+        name: a.LogicalName,
+        displayName: a.DisplayName?.UserLocalizedLabel?.Label || a.LogicalName,
+        type: a.AttributeType,
+        required: a.RequiredLevel?.Value || 'None',
+        maxLength: a.MaxLength || null,
+        minValue: a.MinValue || null,
+        maxValue: a.MaxValue || null,
+        precision: a.Precision || null,
+      }));
+    } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Columns for ${tableName}: ${e.message}`));
+      return [];
+    }
+  }
+
+  async getOptionSetValues(attributeName, tableName) {
+    try {
+      const data = await this.fetch(`EntityDefinitions(LogicalName='${tableName}')/Attributes(LogicalName='${attributeName}')/Microsoft.Dynamics.CRM.PicklistAttributeMetadata?$select=LogicalName&$expand=OptionSet($select=Options)`);
+      return data.OptionSet?.Options?.map(o => ({
+        value: o.Value,
+        label: o.Label?.UserLocalizedLabel?.Label || o.Value.toString(),
+      })) || [];
+    } catch (e) {
+      return [];
+    }
+  }
 }
 
 class EnvironmentAudit {
-  constructor(masterUrl, masterName, targets) {
+  constructor(masterUrl, masterName, targets, options = {}) {
     this.master = new EnvironmentClient(masterUrl, masterName);
     this.targets = targets.map(t => new EnvironmentClient(t.url, t.name));
+    this.options = options;
     this.report = {
       timestamp: new Date().toISOString(),
       master: masterName,
       targets: targets.map(t => t.name),
+      deep: options.deep || false,
       categories: {},
     };
   }
@@ -631,6 +682,117 @@ class EnvironmentAudit {
     return this.compareGeneric('Security Roles', 'securityRoles', 'getSecurityRoles');
   }
 
+  async compareTableColumnsDeep() {
+    log.info('Deep comparing table columns...');
+
+    // Get custom tables from master
+    const masterTables = await this.master.getTables();
+
+    const comparison = {
+      name: 'Table Columns (Deep)',
+      items: [],
+    };
+
+    let tableCount = 0;
+    for (const table of masterTables) {
+      tableCount++;
+      process.stdout.write(`\r    Analyzing table ${tableCount}/${masterTables.length}: ${table.name.padEnd(40)}`);
+
+      const masterColumns = await this.master.getTableColumns(table.name);
+      const masterColMap = new Map(masterColumns.map(c => [c.name, c]));
+
+      // Get columns from targets
+      const targetData = [];
+      for (const target of this.targets) {
+        const cols = await target.getTableColumns(table.name);
+        targetData.push({
+          name: target.name,
+          columns: new Map(cols.map(c => [c.name, c])),
+        });
+      }
+
+      // Compare each column
+      const allColNames = new Set([...masterColMap.keys()]);
+      for (const td of targetData) {
+        for (const name of td.columns.keys()) {
+          allColNames.add(name);
+        }
+      }
+
+      for (const colName of allColNames) {
+        const masterCol = masterColMap.get(colName);
+
+        const item = {
+          name: `${table.name}.${colName}`,
+          displayName: masterCol?.displayName || colName,
+          master: masterCol ? this.formatColumnInfo(masterCol) : null,
+          targets: {},
+          status: 'match',
+          details: {
+            table: table.name,
+            column: colName,
+            masterProps: masterCol || null,
+            targetProps: {},
+          },
+        };
+
+        for (const td of targetData) {
+          const targetCol = td.columns.get(colName);
+          item.targets[td.name] = targetCol ? this.formatColumnInfo(targetCol) : null;
+          item.details.targetProps[td.name] = targetCol || null;
+
+          if (!masterCol && targetCol) {
+            item.status = 'extra_in_target';
+          } else if (masterCol && !targetCol) {
+            item.status = 'missing_in_target';
+          } else if (masterCol && targetCol) {
+            // Deep compare properties
+            const diffs = this.compareColumnProperties(masterCol, targetCol);
+            if (diffs.length > 0) {
+              item.status = 'value_mismatch';
+              item.differences = diffs;
+            }
+          }
+        }
+
+        // Only add if there's a difference
+        if (item.status !== 'match') {
+          comparison.items.push(item);
+        }
+      }
+    }
+
+    console.log(); // New line after progress
+    this.report.categories.tableColumns = comparison;
+    return comparison;
+  }
+
+  formatColumnInfo(col) {
+    let info = col.type;
+    if (col.maxLength) info += `(${col.maxLength})`;
+    if (col.required !== 'None') info += ' REQ';
+    return info;
+  }
+
+  compareColumnProperties(master, target) {
+    const diffs = [];
+
+    if (master.type !== target.type) {
+      diffs.push(`type: ${master.type} → ${target.type}`);
+    }
+    if (master.maxLength !== target.maxLength) {
+      diffs.push(`maxLength: ${master.maxLength} → ${target.maxLength}`);
+    }
+    if (master.required !== target.required) {
+      diffs.push(`required: ${master.required} → ${target.required}`);
+    }
+    if (master.precision !== target.precision) {
+      diffs.push(`precision: ${master.precision} → ${target.precision}`);
+    }
+
+    return diffs;
+  }
+
   async runAudit() {
     log.title('Environment Audit');
     console.log();
@@ -639,6 +801,9 @@ class EnvironmentAudit {
     console.log(`  Master:  ${colors.cyan(this.master.name)} (${this.master.url})`);
     for (const target of this.targets) {
       console.log(`  Compare: ${colors.yellow(target.name)} (${target.url})`);
+    }
+    if (this.options.deep) {
+      console.log(colors.magenta('  Mode:    DEEP (comparing table columns)'));
     }
 
     await this.authenticate();
@@ -655,6 +820,13 @@ class EnvironmentAudit {
     await this.compareSecurityRoles();
     await this.compareWebResources();
     await this.compareTables();
+
+    // Deep mode - compare table columns
+    if (this.options.deep) {
+      console.log();
+      log.title('Deep Comparisons');
+      await this.compareTableColumnsDeep();
+    }
 
     return this.report;
   }
@@ -772,86 +944,82 @@ class EnvironmentAudit {
       --extra: #a855f7;
       --bg: #0f172a;
       --bg-card: #1e293b;
-      --text: #f1f5f9;
-      --text-dim: #94a3b8;
+      --text: #e2e8f0;
+      --text-dim: #64748b;
       --border: #334155;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 12px;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.6;
-      padding: 2rem;
+      line-height: 1.4;
+      padding: 1rem;
     }
-    .container { max-width: 1400px; margin: 0 auto; }
+    .container { max-width: 1600px; margin: 0 auto; }
     header {
       background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-      padding: 2rem;
-      border-radius: 12px;
-      margin-bottom: 2rem;
-    }
-    header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
-    header p { opacity: 0.9; }
-    .meta {
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
       display: flex;
-      gap: 2rem;
-      margin-top: 1rem;
-      font-size: 0.9rem;
+      justify-content: space-between;
+      align-items: center;
     }
-    .meta span { background: rgba(255,255,255,0.2); padding: 0.25rem 0.75rem; border-radius: 20px; }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+    header p { opacity: 0.9; font-size: 0.85rem; }
+    .meta { display: flex; gap: 1rem; font-size: 0.75rem; }
+    .meta span { background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 4px; }
     .summary-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
     }
     .summary-card {
       background: var(--bg-card);
-      padding: 1.5rem;
-      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
       text-align: center;
-      border-left: 4px solid var(--border);
+      border-left: 3px solid var(--border);
+      flex: 1;
     }
     .summary-card.match { border-left-color: var(--match); }
     .summary-card.differ { border-left-color: var(--differ); }
     .summary-card.missing { border-left-color: var(--missing); }
     .summary-card.extra { border-left-color: var(--extra); }
-    .summary-card .number { font-size: 2.5rem; font-weight: bold; }
-    .summary-card .label { color: var(--text-dim); font-size: 0.85rem; text-transform: uppercase; }
+    .summary-card .number { font-size: 1.5rem; font-weight: bold; }
+    .summary-card .label { color: var(--text-dim); font-size: 0.7rem; text-transform: uppercase; }
     .category {
       background: var(--bg-card);
-      border-radius: 12px;
-      margin-bottom: 1.5rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
       overflow: hidden;
     }
     .category-header {
-      background: rgba(99, 102, 241, 0.2);
-      padding: 1rem 1.5rem;
+      background: rgba(99, 102, 241, 0.15);
+      padding: 0.5rem 1rem;
       font-weight: 600;
-      font-size: 1.1rem;
+      font-size: 0.85rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .category-stats {
-      display: flex;
-      gap: 1rem;
-      font-size: 0.85rem;
-    }
-    .category-stats span { padding: 0.25rem 0.5rem; border-radius: 4px; }
+    .category-stats { display: flex; gap: 0.5rem; font-size: 0.7rem; }
+    .category-stats span { padding: 0.15rem 0.4rem; border-radius: 3px; }
     .stat-match { background: rgba(34, 197, 94, 0.2); color: var(--match); }
     .stat-differ { background: rgba(234, 179, 8, 0.2); color: var(--differ); }
     .stat-missing { background: rgba(239, 68, 68, 0.2); color: var(--missing); }
     .stat-extra { background: rgba(168, 85, 247, 0.2); color: var(--extra); }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    table { width: 100%; border-collapse: collapse; }
     th, td {
-      padding: 0.75rem 1rem;
+      padding: 0.35rem 0.75rem;
       text-align: left;
       border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 300px;
     }
     th {
       background: rgba(0,0,0,0.2);
