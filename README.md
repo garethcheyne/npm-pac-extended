@@ -160,16 +160,18 @@ Compare a master/baseline environment against one or more target environments to
 
 ```bash
 # Compare prod (master) against dev and test
-pac-ext audit --master prod --compare dev,test
+pac-ext audit --master prod --compare dev test
 
 # Compare dev against test only
 pac-ext audit --master dev --compare test
 
-# Save report to JSON file
-pac-ext audit --master prod --compare dev,test --save
+# Save report to HTML and JSON (opens in browser)
+pac-ext audit --master prod --compare dev test --save
 
-# Use full URLs instead of aliases
-pac-ext audit --master https://org1.crm.dynamics.com --compare https://org2.crm.dynamics.com
+# Use full URLs
+pac-ext audit --master https://org-prod.crm.dynamics.com \
+              --compare https://org-dev.crm.dynamics.com \
+                        https://org-test.crm.dynamics.com
 ```
 
 ### What Gets Compared

@@ -840,19 +840,32 @@ async function cmdProxy() {
 async function cmdAudit() {
   log.title('PAC - Environment Audit');
 
-  // Parse arguments
+  // Parse arguments - support space-separated environments after --compare
   const args = process.argv.slice(3);
   let masterEnv = null;
   let compareEnvs = [];
   let saveReport = false;
+  let collectingCompare = false;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--master' || args[i] === '-m') {
-      masterEnv = args[++i];
-    } else if (args[i] === '--compare' || args[i] === '-c') {
-      compareEnvs = args[++i]?.split(',') || [];
-    } else if (args[i] === '--save' || args[i] === '-s') {
-      saveReport = true;
+    const arg = args[i];
+
+    // Check for flags
+    if (arg.startsWith('-')) {
+      collectingCompare = false;
+
+      if (arg === '--master' || arg === '-m') {
+        masterEnv = args[++i];
+      } else if (arg === '--compare' || arg === '-c') {
+        collectingCompare = true;
+      } else if (arg === '--save' || arg === '-s') {
+        saveReport = true;
+      }
+    } else if (collectingCompare) {
+      // Collect all non-flag arguments as environments
+      // Support both comma-separated and space-separated
+      const envs = arg.split(',').map(e => e.trim()).filter(e => e);
+      compareEnvs.push(...envs);
     }
   }
 
@@ -861,22 +874,24 @@ async function cmdAudit() {
     console.log();
     console.log(colors.bold('Usage:'));
     console.log('─'.repeat(60));
-    console.log('  pac-ext audit --master <env> --compare <env1,env2,...>');
+    console.log('  pac-ext audit --master <env> --compare <env1> <env2> ...');
     console.log();
     console.log(colors.bold('Options:'));
     console.log('  --master, -m   Master/baseline environment (dev/test/prod or URL)');
-    console.log('  --compare, -c  Comma-separated list of environments to compare');
-    console.log('  --save, -s     Save report to JSON file');
+    console.log('  --compare, -c  Environments to compare (space or comma separated)');
+    console.log('  --save, -s     Save report to HTML and JSON');
     console.log();
     console.log(colors.bold('Examples:'));
-    console.log(colors.dim('  # Compare dev (master) against test and prod'));
-    console.log('  pac-ext audit --master dev --compare test,prod');
+    console.log(colors.dim('  # Compare using aliases'));
+    console.log('  pac-ext audit --master prod --compare dev test');
     console.log();
-    console.log(colors.dim('  # Compare prod (master) against all others'));
-    console.log('  pac-ext audit --master prod --compare dev,test');
+    console.log(colors.dim('  # Compare using URLs'));
+    console.log('  pac-ext audit --master https://org-prod.crm.dynamics.com \\');
+    console.log('                --compare https://org-dev.crm.dynamics.com \\');
+    console.log('                          https://org-test.crm.dynamics.com');
     console.log();
-    console.log(colors.dim('  # Use custom URLs'));
-    console.log('  pac-ext audit --master https://org1.crm.dynamics.com --compare https://org2.crm.dynamics.com');
+    console.log(colors.dim('  # Save report'));
+    console.log('  pac-ext audit --master prod --compare dev test --save');
     console.log();
 
     // Show configured environments
