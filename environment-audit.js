@@ -144,6 +144,7 @@ class EnvironmentClient {
         value: d.environmentvariablevalues?.[0]?.value || '(not set)',
       }));
     } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Environment variables: ${e.message}`));
       return [];
     }
   }
@@ -158,6 +159,7 @@ class EnvironmentClient {
         isolationMode: p.isolationmode,
       }));
     } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Plugins: ${e.message}`));
       return [];
     }
   }
@@ -171,6 +173,7 @@ class EnvironmentClient {
         type: w.webresourcetype,
       }));
     } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Web resources: ${e.message}`));
       return [];
     }
   }
@@ -184,6 +187,62 @@ class EnvironmentClient {
         tableType: t.TableType,
       }));
     } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Custom tables: ${e.message}`));
+      return [];
+    }
+  }
+
+  async getFlows() {
+    try {
+      const data = await this.fetch('workflows?$filter=category eq 5 and statecode eq 1&$select=name,uniquename,statecode,statuscode');
+      return data.value.map(f => ({
+        name: f.name,
+        uniqueName: f.uniquename,
+        state: f.statecode === 1 ? 'Active' : 'Inactive',
+      }));
+    } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Flows: ${e.message}`));
+      return [];
+    }
+  }
+
+  async getCanvasApps() {
+    try {
+      const data = await this.fetch('canvasapps?$select=name,displayname,appversion');
+      return data.value.map(a => ({
+        name: a.name,
+        displayName: a.displayname,
+        version: a.appversion,
+      }));
+    } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Canvas apps: ${e.message}`));
+      return [];
+    }
+  }
+
+  async getModelApps() {
+    try {
+      const data = await this.fetch('appmodules?$select=name,uniquename,appmoduleversion');
+      return data.value.map(a => ({
+        name: a.name,
+        uniqueName: a.uniquename,
+        version: a.appmoduleversion,
+      }));
+    } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Model-driven apps: ${e.message}`));
+      return [];
+    }
+  }
+
+  async getSecurityRoles() {
+    try {
+      const data = await this.fetch('roles?$filter=iscustomizable/Value eq true&$select=name,roleid');
+      return data.value.map(r => ({
+        name: r.name,
+        id: r.roleid,
+      }));
+    } catch (e) {
+      console.log(colors.dim(`    [${this.name}] Security roles: ${e.message}`));
       return [];
     }
   }
@@ -495,6 +554,83 @@ class EnvironmentAudit {
     return comparison;
   }
 
+  // Generic comparison helper for simple presence/absence checks
+  async compareGeneric(categoryName, categoryKey, getterName, valueField = null) {
+    log.info(`Comparing ${categoryName.toLowerCase()}...`);
+
+    const masterItems = await this.master[getterName]();
+    const masterMap = new Map(masterItems.map(item => [item.name, item]));
+
+    const comparison = {
+      name: categoryName,
+      items: [],
+    };
+
+    const targetData = [];
+    for (const target of this.targets) {
+      const items = await target[getterName]();
+      targetData.push({
+        name: target.name,
+        items: new Map(items.map(item => [item.name, item])),
+      });
+    }
+
+    const allNames = new Set([...masterMap.keys()]);
+    for (const td of targetData) {
+      for (const name of td.items.keys()) {
+        allNames.add(name);
+      }
+    }
+
+    for (const name of [...allNames].sort()) {
+      const masterItem = masterMap.get(name);
+      const masterValue = masterItem ? (valueField ? masterItem[valueField] : 'present') : null;
+
+      const item = {
+        name: name,
+        displayName: masterItem?.displayName || masterItem?.name || name,
+        master: masterValue,
+        targets: {},
+        status: 'match',
+      };
+
+      for (const td of targetData) {
+        const targetItem = td.items.get(name);
+        const targetValue = targetItem ? (valueField ? targetItem[valueField] : 'present') : null;
+        item.targets[td.name] = targetValue;
+
+        if (!masterItem && targetItem) {
+          item.status = 'extra_in_target';
+        } else if (masterItem && !targetItem) {
+          item.status = 'missing_in_target';
+        } else if (valueField && masterItem && targetItem && masterValue !== targetValue) {
+          item.status = 'value_mismatch';
+        }
+      }
+
+      comparison.items.push(item);
+    }
+
+    this.report.categories[categoryKey] = comparison;
+    return comparison;
+  }
+
+  async compareFlows() {
+    return this.compareGeneric('Cloud Flows', 'flows', 'getFlows', 'state');
+  }
+
+  async compareCanvasApps() {
+    return this.compareGeneric('Canvas Apps', 'canvasApps', 'getCanvasApps', 'version');
+  }
+
+  async compareModelApps() {
+    return this.compareGeneric('Model-Driven Apps', 'modelApps', 'getModelApps', 'version');
+  }
+
+  async compareSecurityRoles() {
+    return this.compareGeneric('Security Roles', 'securityRoles', 'getSecurityRoles');
+  }
+
   async runAudit() {
     log.title('Environment Audit');
     console.log();
@@ -513,6 +649,10 @@ class EnvironmentAudit {
     await this.compareSolutions();
     await this.compareEnvironmentVariables();
     await this.comparePlugins();
+    await this.compareFlows();
+    await this.compareCanvasApps();
+    await this.compareModelApps();
+    await this.compareSecurityRoles();
     await this.compareWebResources();
     await this.compareTables();
 
