@@ -951,8 +951,20 @@ async function cmdAudit() {
         fs.mkdirSync(reportsDir, { recursive: true });
       }
 
+      // Sanitize name for filename (extract org name from URL or use alias)
+      const sanitizeName = (name) => {
+        // If it's a URL, extract the org name
+        if (name.includes('.dynamics.com') || name.includes('.crm')) {
+          const match = name.match(/https?:\/\/([^.]+)/);
+          return match ? match[1] : 'environment';
+        }
+        // Otherwise just remove invalid chars
+        return name.replace(/[^a-zA-Z0-9-_]/g, '_');
+      };
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const baseName = `${reportsDir}/audit-${master.name}-${timestamp}`;
+      const safeName = sanitizeName(master.name);
+      const baseName = `${reportsDir}/audit-${safeName}-${timestamp}`;
 
       audit.saveReport(`${baseName}.json`);
       const htmlPath = audit.saveHtmlReport(`${baseName}.html`);
