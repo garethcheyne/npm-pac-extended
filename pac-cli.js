@@ -95,12 +95,44 @@ async function cmdInit() {
     // Default settings
     DEFAULT_ENV: await prompt('Default environment (dev/test/prod)', 'dev'),
     AUTO_BUMP_VERSION: await prompt('Auto bump version on deploy? (true/false)', 'true'),
-    BUMP_TYPE: await prompt('Version bump type (patch/minor/major)', 'patch'),
-
-    // Paths
-    SOLUTION_OUTPUT_PATH: await prompt('Solution output folder', './solutions'),
-    SOLUTION_SOURCE_PATH: await prompt('Solution source folder', './src'),
   };
+
+  // Version format selection
+  console.log();
+  console.log(colors.bold('Version Format:'));
+  console.log('─'.repeat(50));
+  console.log('  1. ' + colors.cyan('semantic') + '  - 1.0.0.0 (major.minor.patch.revision)');
+  console.log('  2. ' + colors.cyan('date') + '      - 2024.02.08.1 (yyyy.mm.dd.sequence)');
+  console.log('  3. ' + colors.cyan('year') + '      - 2024.1.0.0 (yyyy.minor.patch.revision)');
+  console.log();
+
+  const versionChoice = await prompt('Choose version format (1/2/3)', '1');
+  let versionFormat;
+  switch (versionChoice) {
+    case '2':
+    case 'date':
+      versionFormat = 'date';
+      break;
+    case '3':
+    case 'year':
+      versionFormat = 'year';
+      break;
+    default:
+      versionFormat = 'semantic';
+  }
+
+  config.VERSION_FORMAT = versionFormat;
+
+  // Only ask for bump type if semantic versioning
+  if (versionFormat === 'semantic') {
+    config.BUMP_TYPE = await prompt('Version bump type (patch/minor/major)', 'patch');
+  } else {
+    config.BUMP_TYPE = 'auto';
+  }
+
+  // Paths
+  config.SOLUTION_OUTPUT_PATH = await prompt('Solution output folder', './solutions');
+  config.SOLUTION_SOURCE_PATH = await prompt('Solution source folder', './src');
 
   // Create .env content
   const envContent = Object.entries(config)
@@ -134,7 +166,10 @@ DEFAULT_ENV=${config.DEFAULT_ENV}
 # Automatically bump version on deploy
 AUTO_BUMP_VERSION=${config.AUTO_BUMP_VERSION}
 
-# Version bump type: patch (1.0.X), minor (1.X.0), major (X.0.0)
+# Version format: semantic (1.0.0.0), date (yyyy.mm.dd.seq), year (yyyy.minor.patch.rev)
+VERSION_FORMAT=${config.VERSION_FORMAT}
+
+# Version bump type (for semantic): patch (1.0.X.0), minor (1.X.0.0), major (X.0.0.0)
 BUMP_TYPE=${config.BUMP_TYPE}
 
 # ============================================================================
@@ -407,33 +442,88 @@ async function cmdVersionBump() {
   }
 
   let [, major, minor, build, revision] = versionMatch.map(Number);
+  const versionFormat = process.env.VERSION_FORMAT || 'semantic';
   const bumpType = process.env.BUMP_TYPE || 'patch';
 
-  switch (bumpType) {
-    case 'major':
-      major++;
-      minor = 0;
-      build = 0;
-      revision = 0;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+
+  switch (versionFormat) {
+    case 'date':
+      // Format: yyyy.mm.dd.sequence
+      // If same date, increment sequence; otherwise reset to 1
+      if (major === year && minor === month && build === day) {
+        revision++;
+      } else {
+        major = year;
+        minor = month;
+        build = day;
+        revision = 1;
+      }
       break;
-    case 'minor':
-      minor++;
-      build = 0;
-      revision = 0;
+
+    case 'year':
+      // Format: yyyy.minor.patch.revision
+      // Update year, increment minor
+      if (major !== year) {
+        major = year;
+        minor = 1;
+        build = 0;
+        revision = 0;
+      } else {
+        minor++;
+        build = 0;
+        revision = 0;
+      }
       break;
-    case 'patch':
+
+    case 'semantic':
     default:
-      build++;
-      revision = 0;
+      // Format: major.minor.patch.revision
+      switch (bumpType) {
+        case 'major':
+          major++;
+          minor = 0;
+          build = 0;
+          revision = 0;
+          break;
+        case 'minor':
+          minor++;
+          build = 0;
+          revision = 0;
+          break;
+        case 'patch':
+        default:
+          build++;
+          revision = 0;
+          break;
+      }
       break;
   }
 
-  const oldVersion = versionMatch[0];
-  const newVersion = `<Version>${major}.${minor}.${build}.${revision}</Version>`;
-  content = content.replace(oldVersion, newVersion);
+  const oldVersionStr = versionMatch[0].replace(/<\/?Version>/g, '');
+  const newVersionStr = `${major}.${minor}.${build}.${revision}`;
+  const newVersion = `<Version>${newVersionStr}</Version>`;
+  content = content.replace(versionMatch[0], newVersion);
 
   fs.writeFileSync(solutionXmlPath, content);
-  log.success(`Version bumped: ${versionMatch[0].replace(/<\/?Version>/g, '')} -> ${major}.${minor}.${build}.${revision}`);
+
+  // Show format-specific message
+  let formatLabel;
+  switch (versionFormat) {
+    case 'date':
+      formatLabel = `(${year}.${month}.${day}.seq)`;
+      break;
+    case 'year':
+      formatLabel = `(${year}.minor.patch.rev)`;
+      break;
+    default:
+      formatLabel = '(semantic)';
+  }
+
+  log.success(`Version bumped ${formatLabel}: ${oldVersionStr} -> ${newVersionStr}`);
 }
 
 function cmdStatus() {
@@ -443,6 +533,7 @@ function cmdStatus() {
   console.log('  Solution:', process.env.SOLUTION_NAME || colors.dim('(not set)'));
   console.log('  Default Env:', process.env.DEFAULT_ENV || colors.dim('(not set)'));
   console.log('  Auto Bump:', process.env.AUTO_BUMP_VERSION || colors.dim('(not set)'));
+  console.log('  Version Format:', process.env.VERSION_FORMAT || colors.dim('semantic'));
 
   console.log('\n' + colors.bold('Environments:'));
   console.log('  Dev:', process.env.ENV_DEV_URL || colors.dim('(not set)'));
