@@ -1,0 +1,24 @@
+# Environment configuration (user-specific)
+.env
+
+# Claude Code settings
+.claude/
+
+# Dependencies
+node_modules/
+
+# Solution files (user-generated)
+solutions/
+src/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,41 @@
+{
+  "name": "pac-extended",
+  "version": "1.0.0",
+  "description": "Simplified Power Platform CLI wrapper for easier deployments",
+  "main": "pac-cli.js",
+  "bin": {
+    "pac-ext": "./pac-cli.js"
+  },
+  "files": [
+    "pac-cli.js",
+    ".env.example",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "power-platform",
+    "pac",
+    "dynamics365",
+    "dataverse",
+    "cli",
+    "deployment"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/garethcheyne/npm-pac-extended.git"
+  },
+  "bugs": {
+    "url": "https://github.com/garethcheyne/npm-pac-extended/issues"
+  },
+  "homepage": "https://github.com/garethcheyne/npm-pac-extended#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
