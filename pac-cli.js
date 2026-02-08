@@ -553,11 +553,15 @@ const commands = {
   'help': cmdHelp,
 };
 
-if (commands[command]) {
-  commands[command]().catch(err => {
-    log.error(err.message);
-    process.exit(1);
-  });
-} else {
-  cmdHelp();
+async function main() {
+  if (commands[command]) {
+    await commands[command]();
+  } else {
+    cmdHelp();
+  }
 }
+
+main().catch(err => {
+  log.error(err.message);
+  process.exit(1);
+});
