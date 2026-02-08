@@ -69,6 +69,10 @@ Then use: `npm run pac:deploy`
 | `pac-ext deploy --env prod` | Deploy as managed to production |
 | `pac-ext publish` | Publish all customizations |
 | `pac-ext version-bump` | Bump solution version |
+| `pac-ext pcf-init` | Initialize new PCF component |
+| `pac-ext pcf-build` | Build PCF component |
+| `pac-ext pcf-push` | Push PCF to environment |
+| `pac-ext plugin-init` | Initialize new plugin project |
 | `pac-ext status` | Show configuration and auth status |
 | `pac-ext help` | Show help |
 
@@ -116,6 +120,15 @@ pac-ext deploy            # Deploy to dev (bumps version)
 ```bash
 pac-ext deploy --env test    # Deploy to test
 pac-ext deploy --env prod    # Deploy as managed to production
+```
+
+### PCF Component
+```bash
+pac-ext pcf-init             # Create new PCF component
+cd MyComponent
+npm install
+npm run build
+pac-ext pcf-push             # Push to environment
 ```
 
 ## Features

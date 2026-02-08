@@ -19,6 +19,8 @@
     "pac",
     "dynamics365",
     "dataverse",
+    "pcf",
+    "plugin",
     "cli",
     "deployment"
   ],

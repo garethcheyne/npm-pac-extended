@@ -457,6 +457,77 @@ function cmdStatus() {
   }
 }
 
+// ============================================================================
+// PCF COMMANDS
+// ============================================================================
+
+async function cmdPcfInit() {
+  log.title('PAC - Initialize PCF Component');
+
+  const name = await prompt('Component name');
+  const namespace = await prompt('Namespace', process.env.SOLUTION_PUBLISHER_PREFIX || 'New');
+  const template = await prompt('Template (field/dataset)', 'field');
+
+  const outputPath = process.argv[3] || `./${name}`;
+
+  log.info(`Creating PCF component: ${namespace}.${name}`);
+  runPac(`pcf init --name "${name}" --namespace "${namespace}" --template "${template}" --outputDirectory "${outputPath}"`);
+
+  log.success(`PCF component created at: ${outputPath}`);
+  console.log('\nNext steps:');
+  console.log(`  1. cd ${outputPath}`);
+  console.log('  2. npm install');
+  console.log('  3. npm run build');
+  console.log('  4. npm run pac:pcf:push');
+}
+
+function cmdPcfPush() {
+  log.title('PAC - Push PCF Component');
+
+  const env = getEnvUrl(process.env.DEFAULT_ENV || 'dev');
+  if (env) {
+    log.info(`Pushing to: ${env}`);
+    try {
+      runPac(`org select --environment "${env}"`, { silent: true });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  runPac('pcf push --publisher-prefix ' + (process.env.SOLUTION_PUBLISHER_PREFIX || 'new'));
+  log.success('PCF component pushed!');
+}
+
+function cmdPcfBuild() {
+  log.title('PAC - Build PCF Component');
+
+  const isProduction = process.argv.includes('--prod') || process.argv.includes('--production');
+
+  if (isProduction) {
+    log.info('Building for production...');
+    runPac('pcf build --production');
+  } else {
+    log.info('Building for development...');
+    runPac('pcf build');
+  }
+
+  log.success('PCF build complete!');
+}
+
+// ============================================================================
+// PLUGIN COMMANDS
+// ============================================================================
+
+async function cmdPluginInit() {
+  log.title('PAC - Initialize Plugin Project');
+
+  const name = await prompt('Plugin name');
+  const outputPath = process.argv[3] || `./${name}`;
+
+  runPac(`plugin init --outputDirectory "${outputPath}"`);
+  log.success(`Plugin project created at: ${outputPath}`);
+}
+
 function cmdHelp() {
   log.title('PAC Extended - Commands');
 
@@ -478,6 +549,10 @@ function cmdHelp() {
     { cmd: 'pac:deploy:prod', desc: 'Deploy as managed to production' },
     { cmd: 'pac:publish', desc: 'Publish all customizations' },
     { cmd: 'pac:version:bump', desc: 'Bump solution version' },
+    { cmd: 'pac:pcf:init', desc: 'Initialize new PCF component' },
+    { cmd: 'pac:pcf:build', desc: 'Build PCF component' },
+    { cmd: 'pac:pcf:push', desc: 'Push PCF to environment' },
+    { cmd: 'pac:plugin:init', desc: 'Initialize new plugin project' },
     { cmd: 'pac:status', desc: 'Show current configuration and auth status' },
     { cmd: 'pac:help', desc: 'Show this help' },
   ];
@@ -549,6 +624,10 @@ const commands = {
   'deploy': cmdDeploy,
   'publish': cmdPublish,
   'version-bump': cmdVersionBump,
+  'pcf-init': cmdPcfInit,
+  'pcf-build': cmdPcfBuild,
+  'pcf-push': cmdPcfPush,
+  'plugin-init': cmdPluginInit,
   'status': cmdStatus,
   'help': cmdHelp,
 };
