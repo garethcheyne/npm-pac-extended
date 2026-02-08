@@ -744,6 +744,99 @@ function cmdPcfBuild() {
   log.success('PCF build complete!');
 }
 
+async function cmdPcfStart() {
+  log.title('PAC - Start PCF Development');
+
+  const envUrl = process.env.ENV_DEV_URL;
+
+  // Check if we're in a PCF project folder
+  const hasPcfConfig = fs.existsSync('pcfconfig.json') || fs.existsSync('ControlManifest.Input.xml');
+  const hasPackageJson = fs.existsSync('package.json');
+
+  if (!hasPcfConfig) {
+    log.warn('No PCF project found in current directory');
+    console.log(colors.dim('  Run this command from your PCF component folder'));
+    return;
+  }
+
+  // Install dependencies if needed
+  if (hasPackageJson && !fs.existsSync('node_modules')) {
+    log.info('Installing dependencies...');
+    try {
+      execSync('npm install', { stdio: 'inherit' });
+    } catch (e) {
+      log.error('Failed to install dependencies');
+      return;
+    }
+  }
+
+  console.log();
+  console.log(colors.bold('Starting PCF Development:'));
+  console.log('─'.repeat(50));
+
+  if (envUrl) {
+    console.log(`  ${colors.green('✓')} Environment: ${envUrl}`);
+    console.log(`  ${colors.green('✓')} Live data proxy will start on port 3000`);
+    console.log(`  ${colors.green('✓')} PCF harness will start on port 8181`);
+    console.log();
+
+    // Start proxy in background
+    log.info('Starting Dataverse proxy...');
+    const proxyPath = path.join(__dirname, 'dataverse-proxy.js');
+    const proxyProcess = spawn('node', [proxyPath], {
+      stdio: 'inherit',
+      env: { ...process.env },
+      detached: false,
+    });
+
+    // Give proxy time to start
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Start PCF harness
+    log.info('Starting PCF test harness...');
+    try {
+      execSync('npm start', { stdio: 'inherit' });
+    } catch (e) {
+      // User cancelled with Ctrl+C
+    }
+
+    // Cleanup
+    proxyProcess.kill();
+  } else {
+    console.log(colors.yellow('  ! No environment URL configured'));
+    console.log(colors.dim('    Starting harness without live data proxy'));
+    console.log(colors.dim('    Tip: Run pac-ext init to configure environments'));
+    console.log();
+
+    // Just start the harness
+    log.info('Starting PCF test harness...');
+    try {
+      execSync('npm start', { stdio: 'inherit' });
+    } catch (e) {
+      // User cancelled
+    }
+  }
+}
+
+async function cmdProxy() {
+  log.title('PAC - Dataverse Proxy');
+
+  const envUrl = process.env.ENV_DEV_URL || process.argv[3];
+
+  if (!envUrl) {
+    log.error('No environment URL configured');
+    console.log();
+    console.log('Set ENV_DEV_URL in .env or pass as argument:');
+    console.log(colors.dim('  pac-ext proxy https://yourorg.crm.dynamics.com'));
+    return;
+  }
+
+  // Load and run proxy
+  const { DataverseProxy } = require('./dataverse-proxy.js');
+  const proxy = new DataverseProxy(envUrl);
+  await proxy.start();
+}
+
 // ============================================================================
 // PLUGIN COMMANDS
 // ============================================================================
@@ -782,6 +875,8 @@ function cmdHelp() {
     { cmd: 'pac:pcf:init', desc: 'Initialize new PCF component' },
     { cmd: 'pac:pcf:build', desc: 'Build PCF component' },
     { cmd: 'pac:pcf:push', desc: 'Push PCF to environment' },
+    { cmd: 'pac:pcf:start', desc: 'Start harness with live data proxy' },
+    { cmd: 'pac:proxy', desc: 'Start Dataverse proxy server only' },
     { cmd: 'pac:plugin:init', desc: 'Initialize new plugin project' },
     { cmd: 'pac:status', desc: 'Show current configuration and auth status' },
     { cmd: 'pac:help', desc: 'Show this help' },
@@ -857,6 +952,8 @@ const commands = {
   'pcf-init': cmdPcfInit,
   'pcf-build': cmdPcfBuild,
   'pcf-push': cmdPcfPush,
+  'pcf-start': cmdPcfStart,
+  'proxy': cmdProxy,
   'plugin-init': cmdPluginInit,
   'status': cmdStatus,
   'help': cmdHelp,

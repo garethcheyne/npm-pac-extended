@@ -1,6 +1,9 @@
 # Environment configuration (user-specific)
 .env
 
+# Auth token cache (user-specific)
+.token-cache.json
+
 # Claude Code settings
 .claude/
 
