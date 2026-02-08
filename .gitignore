@@ -17,6 +17,9 @@ node_modules/
 solutions/
 src/
 
+# Audit reports (user-generated)
+reports/
+
 # Logs
 *.log
 npm-debug.log*

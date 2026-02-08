@@ -930,7 +930,23 @@ async function cmdAudit() {
     audit.printReport();
 
     if (saveReport) {
-      audit.saveReport();
+      // Create reports directory
+      const reportsDir = './reports';
+      if (!fs.existsSync(reportsDir)) {
+        fs.mkdirSync(reportsDir, { recursive: true });
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const baseName = `${reportsDir}/audit-${master.name}-${timestamp}`;
+
+      audit.saveReport(`${baseName}.json`);
+      const htmlPath = audit.saveHtmlReport(`${baseName}.html`);
+
+      // Open HTML report in browser
+      console.log();
+      log.info('Opening report in browser...');
+      const open = require('open');
+      open(htmlPath).catch(() => {});
     }
   } catch (error) {
     log.error(`Audit failed: ${error.message}`);

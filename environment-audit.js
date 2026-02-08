@@ -613,6 +613,313 @@ class EnvironmentAudit {
     fs.writeFileSync(jsonPath, JSON.stringify(this.report, null, 2));
     log.success(`Report saved to: ${jsonPath}`);
   }
+
+  saveHtmlReport(filename) {
+    const targetNames = this.targets.map(t => t.name);
+    const timestamp = new Date().toLocaleString();
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Environment Audit Report</title>
+  <style>
+    :root {
+      --match: #22c55e;
+      --differ: #eab308;
+      --missing: #ef4444;
+      --extra: #a855f7;
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --text: #f1f5f9;
+      --text-dim: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    header {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      padding: 2rem;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+    }
+    header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+    header p { opacity: 0.9; }
+    .meta {
+      display: flex;
+      gap: 2rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+    .meta span { background: rgba(255,255,255,0.2); padding: 0.25rem 0.75rem; border-radius: 20px; }
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .summary-card {
+      background: var(--bg-card);
+      padding: 1.5rem;
+      border-radius: 8px;
+      text-align: center;
+      border-left: 4px solid var(--border);
+    }
+    .summary-card.match { border-left-color: var(--match); }
+    .summary-card.differ { border-left-color: var(--differ); }
+    .summary-card.missing { border-left-color: var(--missing); }
+    .summary-card.extra { border-left-color: var(--extra); }
+    .summary-card .number { font-size: 2.5rem; font-weight: bold; }
+    .summary-card .label { color: var(--text-dim); font-size: 0.85rem; text-transform: uppercase; }
+    .category {
+      background: var(--bg-card);
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+    .category-header {
+      background: rgba(99, 102, 241, 0.2);
+      padding: 1rem 1.5rem;
+      font-weight: 600;
+      font-size: 1.1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .category-stats {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.85rem;
+    }
+    .category-stats span { padding: 0.25rem 0.5rem; border-radius: 4px; }
+    .stat-match { background: rgba(34, 197, 94, 0.2); color: var(--match); }
+    .stat-differ { background: rgba(234, 179, 8, 0.2); color: var(--differ); }
+    .stat-missing { background: rgba(239, 68, 68, 0.2); color: var(--missing); }
+    .stat-extra { background: rgba(168, 85, 247, 0.2); color: var(--extra); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: rgba(0,0,0,0.2);
+      color: var(--text-dim);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .status-match { background: rgba(34, 197, 94, 0.15); color: var(--match); }
+    .status-differ { background: rgba(234, 179, 8, 0.15); color: var(--differ); }
+    .status-missing { background: rgba(239, 68, 68, 0.15); color: var(--missing); }
+    .status-extra { background: rgba(168, 85, 247, 0.15); color: var(--extra); }
+    .value { font-family: 'Monaco', 'Consolas', monospace; font-size: 0.85rem; }
+    .value-null { color: var(--text-dim); }
+    .filter-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover { border-color: #6366f1; }
+    .filter-btn.active { background: #6366f1; border-color: #6366f1; }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+    footer a { color: #6366f1; text-decoration: none; }
+    @media (max-width: 768px) {
+      body { padding: 1rem; }
+      .meta { flex-direction: column; gap: 0.5rem; }
+      th, td { padding: 0.5rem; font-size: 0.85rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Environment Audit Report</h1>
+      <p>Comparing <strong>${this.master.name}</strong> against ${targetNames.join(', ')}</p>
+      <div class="meta">
+        <span>Generated: ${timestamp}</span>
+        <span>Master: ${this.master.url}</span>
+      </div>
+    </header>
+
+    ${this.generateHtmlSummary()}
+
+    <div class="filter-bar">
+      <button class="filter-btn active" onclick="filterRows('all')">All</button>
+      <button class="filter-btn" onclick="filterRows('differ')">Differences Only</button>
+      <button class="filter-btn" onclick="filterRows('missing')">Missing Only</button>
+      <button class="filter-btn" onclick="filterRows('extra')">Extra Only</button>
+    </div>
+
+    ${this.generateHtmlCategories(targetNames)}
+
+    <footer>
+      Generated by <a href="https://github.com/garethcheyne/npm-pac-extended">PAC Extended</a>
+    </footer>
+  </div>
+
+  <script>
+    function filterRows(filter) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+
+      document.querySelectorAll('tbody tr').forEach(row => {
+        const status = row.dataset.status;
+        if (filter === 'all') {
+          row.style.display = '';
+        } else if (filter === 'differ') {
+          row.style.display = (status === 'version_mismatch' || status === 'value_mismatch') ? '' : 'none';
+        } else if (filter === 'missing') {
+          row.style.display = status === 'missing_in_target' ? '' : 'none';
+        } else if (filter === 'extra') {
+          row.style.display = status === 'extra_in_target' ? '' : 'none';
+        }
+      });
+    }
+  </script>
+</body>
+</html>`;
+
+    const htmlPath = filename || `audit-report-${Date.now()}.html`;
+    fs.writeFileSync(htmlPath, html);
+    log.success(`HTML report saved to: ${htmlPath}`);
+    return htmlPath;
+  }
+
+  generateHtmlSummary() {
+    let totalMatch = 0, totalDiffer = 0, totalMissing = 0, totalExtra = 0;
+
+    for (const category of Object.values(this.report.categories)) {
+      for (const item of category.items) {
+        switch (item.status) {
+          case 'match': totalMatch++; break;
+          case 'version_mismatch':
+          case 'value_mismatch': totalDiffer++; break;
+          case 'missing_in_target': totalMissing++; break;
+          case 'extra_in_target': totalExtra++; break;
+        }
+      }
+    }
+
+    return `
+    <div class="summary-cards">
+      <div class="summary-card match">
+        <div class="number">${totalMatch}</div>
+        <div class="label">Match</div>
+      </div>
+      <div class="summary-card differ">
+        <div class="number">${totalDiffer}</div>
+        <div class="label">Different</div>
+      </div>
+      <div class="summary-card missing">
+        <div class="number">${totalMissing}</div>
+        <div class="label">Missing</div>
+      </div>
+      <div class="summary-card extra">
+        <div class="number">${totalExtra}</div>
+        <div class="label">Extra</div>
+      </div>
+    </div>`;
+  }
+
+  generateHtmlCategories(targetNames) {
+    let html = '';
+
+    for (const [key, category] of Object.entries(this.report.categories)) {
+      let matches = 0, differs = 0, missing = 0, extra = 0;
+      category.items.forEach(item => {
+        switch (item.status) {
+          case 'match': matches++; break;
+          case 'version_mismatch':
+          case 'value_mismatch': differs++; break;
+          case 'missing_in_target': missing++; break;
+          case 'extra_in_target': extra++; break;
+        }
+      });
+
+      html += `
+      <div class="category">
+        <div class="category-header">
+          <span>${category.name}</span>
+          <div class="category-stats">
+            <span class="stat-match">✓ ${matches}</span>
+            <span class="stat-differ">! ${differs}</span>
+            <span class="stat-missing">✗ ${missing}</span>
+            <span class="stat-extra">+ ${extra}</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Master</th>
+              ${targetNames.map(n => `<th>${n}</th>`).join('')}
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+      for (const item of category.items) {
+        const statusClass = item.status.replace('_', '-').replace('version-mismatch', 'differ').replace('value-mismatch', 'differ').replace('missing-in-target', 'missing').replace('extra-in-target', 'extra');
+        const statusLabel = item.status === 'match' ? '✓ Match' :
+                           item.status.includes('mismatch') ? '! Different' :
+                           item.status === 'missing_in_target' ? '✗ Missing' :
+                           item.status === 'extra_in_target' ? '+ Extra' : item.status;
+
+        html += `
+            <tr data-status="${item.status}">
+              <td><strong>${item.displayName || item.name}</strong><br><span class="value-null">${item.name}</span></td>
+              <td class="value">${item.master || '<span class="value-null">—</span>'}</td>
+              ${targetNames.map(n => `<td class="value">${item.targets[n] || '<span class="value-null">—</span>'}</td>`).join('')}
+              <td><span class="status status-${statusClass}">${statusLabel}</span></td>
+            </tr>`;
+      }
+
+      html += `
+          </tbody>
+        </table>
+      </div>`;
+    }
+
+    return html;
+  }
 }
 
 module.exports = { EnvironmentAudit, EnvironmentClient };
