@@ -509,13 +509,9 @@ async function cmdPcfInit() {
     return;
   }
 
-  // Generate technical name (PascalCase, alphanumeric only - PAC requirement)
+  // Generate technical name (strip invalid chars, keep original case)
   const generateTechnicalName = (str) => {
-    return str
-      .split(/[\s_-]+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join('')
-      .replace(/[^A-Za-z0-9]/g, '');
+    return str.replace(/[^A-Za-z0-9]/g, '');
   };
 
   let technicalName = generateTechnicalName(displayName);
