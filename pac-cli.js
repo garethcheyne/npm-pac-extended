@@ -495,16 +495,49 @@ async function cmdPcfInit() {
   console.log(colors.bold('Component Details:'));
   console.log('─'.repeat(50));
 
-  // Get component name (required)
-  let name = process.argv[3];
-  if (!name) {
-    name = await prompt('  Component name');
+  // Get display name (can have spaces)
+  let displayName = process.argv[3];
+  if (!displayName) {
+    console.log(colors.dim('  Display name can include spaces (e.g., "Fluent Address Picker")'));
+    displayName = await prompt('  Display name');
   } else {
-    console.log(`  Component name: ${colors.cyan(name)}`);
+    console.log(`  Display name: ${colors.cyan(displayName)}`);
   }
 
-  if (!name || name.trim() === '') {
-    log.error('Component name is required');
+  if (!displayName || displayName.trim() === '') {
+    log.error('Display name is required');
+    return;
+  }
+
+  // Generate technical name (PascalCase, alphanumeric only)
+  const generateTechnicalName = (str) => {
+    return str
+      .split(/[\s_-]+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('')
+      .replace(/[^A-Za-z0-9]/g, '');
+  };
+
+  let technicalName = generateTechnicalName(displayName);
+
+  console.log();
+  console.log(colors.dim('  Technical name must be alphanumeric (A-Z, a-z, 0-9)'));
+  console.log(colors.dim(`  Generated: ${technicalName}`));
+
+  const useTechnicalName = await promptYN(`  Use "${technicalName}" as technical name?`, true);
+  if (!useTechnicalName) {
+    technicalName = await prompt('  Technical name');
+    // Clean the input
+    technicalName = technicalName.replace(/[^A-Za-z0-9]/g, '');
+    if (!technicalName) {
+      log.error('Technical name is required and must be alphanumeric');
+      return;
+    }
+  }
+
+  // Validate technical name
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(technicalName)) {
+    log.error('Technical name must start with a letter and contain only A-Z, a-z, 0-9');
     return;
   }
 
@@ -537,17 +570,19 @@ async function cmdPcfInit() {
 
   const template = await prompt('  Template (field/dataset)', 'field');
 
-  // Output path
-  const outputPath = `./${name}`;
+  // Output path (use technical name for folder)
+  const outputPath = `./${technicalName}`;
 
   // Summary before creation
   console.log();
   console.log(colors.bold('Summary:'));
   console.log('─'.repeat(50));
-  console.log(`  Name:      ${colors.cyan(name)}`);
-  console.log(`  Namespace: ${colors.cyan(namespace)}`);
-  console.log(`  Template:  ${colors.cyan(template)}`);
-  console.log(`  Output:    ${colors.cyan(outputPath)}`);
+  console.log(`  Display Name:    ${colors.cyan(displayName)}`);
+  console.log(`  Technical Name:  ${colors.cyan(technicalName)}`);
+  console.log(`  Namespace:       ${colors.cyan(namespace)}`);
+  console.log(`  Full Name:       ${colors.cyan(namespace + '.' + technicalName)}`);
+  console.log(`  Template:        ${colors.cyan(template)}`);
+  console.log(`  Output Folder:   ${colors.cyan(outputPath)}`);
   console.log();
 
   const proceed = await promptYN('  Create component?', true);
@@ -558,10 +593,10 @@ async function cmdPcfInit() {
 
   // Create the component
   console.log();
-  log.info(`Creating PCF component: ${namespace}.${name}`);
+  log.info(`Creating PCF component: ${namespace}.${technicalName}`);
 
   try {
-    runPac(`pcf init --name "${name}" --namespace "${namespace}" --template "${template}" --outputDirectory "${outputPath}"`);
+    runPac(`pcf init --name "${technicalName}" --namespace "${namespace}" --template "${template}" --outputDirectory "${outputPath}"`);
   } catch (error) {
     log.error('Failed to create PCF component');
     return;
@@ -576,7 +611,7 @@ async function cmdPcfInit() {
   console.log();
   console.log(colors.bold('Next Steps:'));
   console.log();
-  console.log(`  ${colors.cyan('1.')} cd ${name}`);
+  console.log(`  ${colors.cyan('1.')} cd ${technicalName}`);
   console.log(`  ${colors.cyan('2.')} npm install`);
   console.log(`  ${colors.cyan('3.')} ${colors.dim('# Edit index.ts to build your component')}`);
   console.log(`  ${colors.cyan('4.')} npm run build`);
