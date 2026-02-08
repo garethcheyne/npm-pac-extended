@@ -509,11 +509,11 @@ async function cmdPcfInit() {
     return;
   }
 
-  // Generate technical name (PascalCase, alphanumeric only)
+  // Generate technical name (PascalCase, alphanumeric only - PAC requirement)
   const generateTechnicalName = (str) => {
     return str
       .split(/[\s_-]+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join('')
       .replace(/[^A-Za-z0-9]/g, '');
   };
@@ -521,7 +521,7 @@ async function cmdPcfInit() {
   let technicalName = generateTechnicalName(displayName);
 
   console.log();
-  console.log(colors.dim('  Technical name must be alphanumeric (A-Z, a-z, 0-9)'));
+  console.log(colors.dim('  Technical name must be alphanumeric (A-Z, a-z, 0-9) - PAC requirement'));
   console.log(colors.dim(`  Generated: ${technicalName}`));
 
   const useTechnicalName = await promptYN(`  Use "${technicalName}" as technical name?`, true);
