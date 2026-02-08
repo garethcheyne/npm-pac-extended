@@ -9,6 +9,7 @@
   "files": [
     "pac-cli.js",
     "dataverse-proxy.js",
+    "environment-audit.js",
     ".env.example",
     "README.md"
   ],

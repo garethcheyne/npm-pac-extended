@@ -837,6 +837,106 @@ async function cmdProxy() {
   await proxy.start();
 }
 
+async function cmdAudit() {
+  log.title('PAC - Environment Audit');
+
+  // Parse arguments
+  const args = process.argv.slice(3);
+  let masterEnv = null;
+  let compareEnvs = [];
+  let saveReport = false;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--master' || args[i] === '-m') {
+      masterEnv = args[++i];
+    } else if (args[i] === '--compare' || args[i] === '-c') {
+      compareEnvs = args[++i]?.split(',') || [];
+    } else if (args[i] === '--save' || args[i] === '-s') {
+      saveReport = true;
+    }
+  }
+
+  // Show help if no args
+  if (!masterEnv && !compareEnvs.length) {
+    console.log();
+    console.log(colors.bold('Usage:'));
+    console.log('─'.repeat(60));
+    console.log('  pac-ext audit --master <env> --compare <env1,env2,...>');
+    console.log();
+    console.log(colors.bold('Options:'));
+    console.log('  --master, -m   Master/baseline environment (dev/test/prod or URL)');
+    console.log('  --compare, -c  Comma-separated list of environments to compare');
+    console.log('  --save, -s     Save report to JSON file');
+    console.log();
+    console.log(colors.bold('Examples:'));
+    console.log(colors.dim('  # Compare dev (master) against test and prod'));
+    console.log('  pac-ext audit --master dev --compare test,prod');
+    console.log();
+    console.log(colors.dim('  # Compare prod (master) against all others'));
+    console.log('  pac-ext audit --master prod --compare dev,test');
+    console.log();
+    console.log(colors.dim('  # Use custom URLs'));
+    console.log('  pac-ext audit --master https://org1.crm.dynamics.com --compare https://org2.crm.dynamics.com');
+    console.log();
+
+    // Show configured environments
+    console.log(colors.bold('Configured Environments:'));
+    console.log('─'.repeat(60));
+    console.log(`  dev:  ${process.env.ENV_DEV_URL || colors.dim('(not set)')}`);
+    console.log(`  test: ${process.env.ENV_TEST_URL || colors.dim('(not set)')}`);
+    console.log(`  prod: ${process.env.ENV_PROD_URL || colors.dim('(not set)')}`);
+    console.log();
+    return;
+  }
+
+  // Resolve environment URLs
+  const resolveEnv = (name) => {
+    const url = getEnvUrl(name);
+    if (url) return { name, url };
+    // If it looks like a URL, use it directly
+    if (name?.includes('.dynamics.com') || name?.includes('.crm')) {
+      return { name: name.split('//')[1]?.split('.')[0] || name, url: name };
+    }
+    return null;
+  };
+
+  const master = resolveEnv(masterEnv);
+  if (!master) {
+    log.error(`Could not resolve master environment: ${masterEnv}`);
+    return;
+  }
+
+  const targets = [];
+  for (const env of compareEnvs) {
+    const resolved = resolveEnv(env.trim());
+    if (resolved) {
+      targets.push(resolved);
+    } else {
+      log.warn(`Could not resolve environment: ${env}`);
+    }
+  }
+
+  if (targets.length === 0) {
+    log.error('No valid target environments to compare');
+    return;
+  }
+
+  // Run audit
+  const { EnvironmentAudit } = require('./environment-audit.js');
+  const audit = new EnvironmentAudit(master.url, master.name, targets);
+
+  try {
+    await audit.runAudit();
+    audit.printReport();
+
+    if (saveReport) {
+      audit.saveReport();
+    }
+  } catch (error) {
+    log.error(`Audit failed: ${error.message}`);
+  }
+}
+
 // ============================================================================
 // PLUGIN COMMANDS
 // ============================================================================
@@ -877,6 +977,7 @@ function cmdHelp() {
     { cmd: 'pac:pcf:push', desc: 'Push PCF to environment' },
     { cmd: 'pac:pcf:start', desc: 'Start harness with live data proxy' },
     { cmd: 'pac:proxy', desc: 'Start Dataverse proxy server only' },
+    { cmd: 'pac:audit', desc: 'Compare environments (master vs targets)' },
     { cmd: 'pac:plugin:init', desc: 'Initialize new plugin project' },
     { cmd: 'pac:status', desc: 'Show current configuration and auth status' },
     { cmd: 'pac:help', desc: 'Show this help' },
@@ -954,6 +1055,7 @@ const commands = {
   'pcf-push': cmdPcfPush,
   'pcf-start': cmdPcfStart,
   'proxy': cmdProxy,
+  'audit': cmdAudit,
   'plugin-init': cmdPluginInit,
   'status': cmdStatus,
   'help': cmdHelp,
