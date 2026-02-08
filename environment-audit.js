@@ -279,7 +279,7 @@ class EnvironmentClient {
         precision: a.Precision || null,
       }));
     } catch (e) {
-      console.log(colors.dim(`    [${this.name}] Columns for ${tableName}: ${e.message}`));
+      // Silently skip tables that don't allow schema queries (e.g., portal tables, system tables)
       return [];
     }
   }
