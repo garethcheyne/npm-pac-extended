@@ -168,6 +168,9 @@ pac-ext audit --master dev --compare test
 # Save report to HTML and JSON (opens in browser)
 pac-ext audit --master prod --compare dev test --save
 
+# Deep mode - compare table columns (type, length, required, precision)
+pac-ext audit --master prod --compare dev test --deep
+
 # Use full URLs
 pac-ext audit --master https://org-prod.crm.dynamics.com \
               --compare https://org-dev.crm.dynamics.com \
@@ -183,6 +186,23 @@ pac-ext audit --master https://org-prod.crm.dynamics.com \
 | Plugins | Assembly names and versions |
 | Web Resources | Presence/absence |
 | Custom Tables | Presence/absence |
+| Workflows | Cloud flows and classic workflows |
+| Security Roles | Role names |
+| Connection References | Connection types |
+| Canvas Apps | App names |
+
+### Deep Mode (--deep)
+
+When using `--deep`, the audit also compares table column schemas:
+
+| Column Property | Description |
+|-----------------|-------------|
+| Type | Data type (String, Integer, DateTime, etc.) |
+| MaxLength | Maximum length for text fields |
+| Required | Required level (None, Recommended, Required) |
+| Precision | Decimal precision for number fields |
+
+This helps identify schema drift where column properties have changed between environments.
 
 ### Sample Output
 
@@ -226,6 +246,7 @@ Environment Variables
 - **One command deploy** - `deploy` does bump + pack + import + publish
 - **PCF live data** - Develop PCF components with real Dataverse data
 - **Environment audit** - Compare solutions, variables, plugins across environments
+- **Deep audit mode** - Compare table column schemas (type, length, required, precision)
 - **Browser auth** - No client secrets needed, authenticates as you
 
 ## Requirements
