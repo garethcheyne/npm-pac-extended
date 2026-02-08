@@ -996,7 +996,7 @@ class EnvironmentAudit {
       margin-bottom: 0.75rem;
       overflow: hidden;
     }
-    .category-header {
+    .category > summary {
       background: rgba(99, 102, 241, 0.15);
       padding: 0.5rem 1rem;
       font-weight: 600;
@@ -1004,6 +1004,25 @@ class EnvironmentAudit {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .category > summary::-webkit-details-marker { display: none; }
+    .category > summary::before {
+      content: '▶';
+      display: inline-block;
+      margin-right: 0.5rem;
+      font-size: 0.7rem;
+      transition: transform 0.2s;
+    }
+    .category[open] > summary::before { transform: rotate(90deg); }
+    .category > summary:hover { background: rgba(99, 102, 241, 0.25); }
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex: 1;
     }
     .category-stats { display: flex; gap: 0.5rem; font-size: 0.7rem; }
     .category-stats span { padding: 0.15rem 0.4rem; border-radius: 3px; }
@@ -1094,6 +1113,9 @@ class EnvironmentAudit {
       <button class="filter-btn" onclick="filterRows('differ')">Differences Only</button>
       <button class="filter-btn" onclick="filterRows('missing')">Missing Only</button>
       <button class="filter-btn" onclick="filterRows('extra')">Extra Only</button>
+      <span style="border-left: 1px solid var(--border); margin: 0 0.5rem;"></span>
+      <button class="filter-btn" onclick="toggleAll(true)">Expand All</button>
+      <button class="filter-btn" onclick="toggleAll(false)">Collapse All</button>
     </div>
 
     ${this.generateHtmlCategories(targetNames)}
@@ -1119,6 +1141,12 @@ class EnvironmentAudit {
         } else if (filter === 'extra') {
           row.style.display = status === 'extra_in_target' ? '' : 'none';
         }
+      });
+    }
+
+    function toggleAll(expand) {
+      document.querySelectorAll('details.category').forEach(d => {
+        d.open = expand;
       });
     }
   </script>
@@ -1182,17 +1210,21 @@ class EnvironmentAudit {
         }
       });
 
+      // Open sections with differences by default
+      const hasIssues = differs > 0 || missing > 0 || extra > 0;
       html += `
-      <div class="category">
-        <div class="category-header">
-          <span>${category.name}</span>
-          <div class="category-stats">
-            <span class="stat-match">✓ ${matches}</span>
-            <span class="stat-differ">! ${differs}</span>
-            <span class="stat-missing">✗ ${missing}</span>
-            <span class="stat-extra">+ ${extra}</span>
+      <details class="category"${hasIssues ? ' open' : ''}>
+        <summary>
+          <div class="category-header">
+            <span>${category.name}</span>
+            <div class="category-stats">
+              <span class="stat-match">✓ ${matches}</span>
+              <span class="stat-differ">! ${differs}</span>
+              <span class="stat-missing">✗ ${missing}</span>
+              <span class="stat-extra">+ ${extra}</span>
+            </div>
           </div>
-        </div>
+        </summary>
         <table>
           <thead>
             <tr>
@@ -1223,7 +1255,7 @@ class EnvironmentAudit {
       html += `
           </tbody>
         </table>
-      </div>`;
+      </details>`;
     }
 
     return html;
