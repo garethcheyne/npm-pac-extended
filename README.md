@@ -72,6 +72,9 @@ Then use: `npm run pac:deploy`
 | `pac-ext pcf-init` | Initialize new PCF component |
 | `pac-ext pcf-build` | Build PCF component |
 | `pac-ext pcf-push` | Push PCF to environment |
+| `pac-ext pcf-start` | Start PCF harness with live data proxy |
+| `pac-ext proxy` | Start Dataverse proxy server |
+| `pac-ext audit` | Compare environments (master vs targets) |
 | `pac-ext plugin-init` | Initialize new plugin project |
 | `pac-ext status` | Show configuration and auth status |
 | `pac-ext help` | Show help |
@@ -131,12 +134,97 @@ npm run build
 pac-ext pcf-push             # Push to environment
 ```
 
+### PCF Development with Live Data
+```bash
+pac-ext pcf-start            # Starts harness + Dataverse proxy
+```
+
+This starts the PCF test harness with a local proxy that authenticates to your Dataverse environment. Your component can fetch real data during development.
+
+```bash
+# Or run proxy separately
+pac-ext proxy                # Start proxy on port 3000
+```
+
+The proxy uses browser-based authentication (no client secret needed). First run opens a browser to sign in, then tokens are cached for subsequent runs.
+
+**Proxy endpoints:**
+- `http://localhost:3000/api/data/v9.2/...` - Proxied Dataverse API
+- `http://localhost:3000/_proxy/whoami` - Current user info
+
+## Environment Audit
+
+Compare a master/baseline environment against one or more target environments to find differences.
+
+### Usage
+
+```bash
+# Compare prod (master) against dev and test
+pac-ext audit --master prod --compare dev,test
+
+# Compare dev against test only
+pac-ext audit --master dev --compare test
+
+# Save report to JSON file
+pac-ext audit --master prod --compare dev,test --save
+
+# Use full URLs instead of aliases
+pac-ext audit --master https://org1.crm.dynamics.com --compare https://org2.crm.dynamics.com
+```
+
+### What Gets Compared
+
+| Category | Details |
+|----------|---------|
+| Solutions | Names and version numbers |
+| Environment Variables | Values across environments |
+| Plugins | Assembly names and versions |
+| Web Resources | Presence/absence |
+| Custom Tables | Presence/absence |
+
+### Sample Output
+
+```
+═══════════════════════════════════════════════════════════════════════
+  ENVIRONMENT AUDIT REPORT
+  Master: prod
+═══════════════════════════════════════════════════════════════════════
+
+Solutions
+──────────────────────────────────────────────────────────────────────
+  Item                           Master          dev             Status
+  MySolution                     2026.2.9.1      2026.2.8.1      !
+  NewFeature                     1.0.0.0         -               ✗
+──────────────────────────────────────────────────────────────────────
+  ✓ 15 match  ! 2 differ  ✗ 1 missing  + 0 extra
+
+Environment Variables
+──────────────────────────────────────────────────────────────────────
+  ApiEndpoint                    https://prod    https://dev     !
+──────────────────────────────────────────────────────────────────────
+  ✓ 8 match  ! 1 differ  ✗ 0 missing  + 0 extra
+
+═══════════════════════════════════════════════════════════════════════
+  ! Found 4 differences across environments
+═══════════════════════════════════════════════════════════════════════
+```
+
+**Legend:**
+- `✓` Match - Same in master and target
+- `!` Differ - Different version/value
+- `✗` Missing - In master but not in target
+- `+` Extra - In target but not in master
+
 ## Features
 
 - **Auto version bump** - Each deploy increments version automatically
+- **Version formats** - Semantic (1.0.0.0), date-based (2024.02.08.1), or year-based (2024.1.0.0)
 - **Environment aliases** - Use `dev`, `test`, `prod` instead of URLs
 - **Smart defaults** - Production deploys use managed solutions
 - **One command deploy** - `deploy` does bump + pack + import + publish
+- **PCF live data** - Develop PCF components with real Dataverse data
+- **Environment audit** - Compare solutions, variables, plugins across environments
+- **Browser auth** - No client secrets needed, authenticates as you
 
 ## Requirements
 
