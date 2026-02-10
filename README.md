@@ -2,6 +2,8 @@
 
 A simplified wrapper for the Power Platform CLI (PAC) that makes deployments easier.
 
+![Power Platform](src/assets/Microsoft_Power_Platform_logo.svg)
+
 ## Installation
 
 ```bash
@@ -40,6 +42,8 @@ After installing, add these scripts to your project's `package.json`:
     "pac:deploy": "pac-ext deploy",
     "pac:deploy:test": "pac-ext deploy --env test",
     "pac:deploy:prod": "pac-ext deploy --env prod",
+    "pac:audit": "pac-ext audit --all --save",
+    "pac:user-audit": "pac-ext user-audit --all --save",
     "pac:status": "pac-ext status",
     "pac:help": "pac-ext help"
   }
@@ -50,6 +54,8 @@ Then use: `npm run pac:deploy`
 
 ## Commands
 
+### Basic Commands
+
 | Command | Description |
 |---------|-------------|
 | `pac-ext init` | Initialize project, create .env configuration |
@@ -58,26 +64,37 @@ Then use: `npm run pac:deploy`
 | `pac-ext auth-clear` | Clear all auth profiles |
 | `pac-ext env-list` | List available environments |
 | `pac-ext env-select` | Select active environment |
+| `pac-ext deploy` | Bump version, pack, and deploy |
+| `pac-ext publish` | Publish all customizations |
+| `pac-ext status` | Show configuration and auth status |
+| `pac-ext help` | Show help |
+
+### Solution Commands
+
+| Command | Description |
+|---------|-------------|
 | `pac-ext solution-list` | List solutions in current environment |
 | `pac-ext solution-clone` | Clone solution from environment |
-| `pac-ext solution-export` | Export solution as zip |
-| `pac-ext solution-import` | Import solution zip |
-| `pac-ext solution-unpack` | Unpack solution zip to source |
-| `pac-ext solution-pack` | Pack source to solution zip |
-| `pac-ext deploy` | Bump version, pack, and deploy |
-| `pac-ext deploy --env test` | Deploy to test environment |
-| `pac-ext deploy --env prod` | Deploy as managed to production |
-| `pac-ext publish` | Publish all customizations |
-| `pac-ext version-bump` | Bump solution version |
+| `pac-ext solution-delete` | Delete a solution from environments |
+| `pac-ext solution-purge` | Deep delete unmanaged solution (components first) |
+
+### Audit Commands
+
+| Command | Description |
+|---------|-------------|
+| `pac-ext audit` | Compare environments (master vs targets) |
+| `pac-ext user-audit` | Audit user permissions and team memberships |
+| `pac-ext role-cleanup` | Remove direct role assignments from users |
+
+### PCF Commands
+
+| Command | Description |
+|---------|-------------|
 | `pac-ext pcf-init` | Initialize new PCF component |
 | `pac-ext pcf-build` | Build PCF component |
 | `pac-ext pcf-push` | Push PCF to environment |
 | `pac-ext pcf-start` | Start PCF harness with live data proxy |
 | `pac-ext proxy` | Start Dataverse proxy server |
-| `pac-ext audit` | Compare environments (master vs targets) |
-| `pac-ext plugin-init` | Initialize new plugin project |
-| `pac-ext status` | Show configuration and auth status |
-| `pac-ext help` | Show help |
 
 ## Configuration
 
@@ -159,22 +176,19 @@ Compare a master/baseline environment against one or more target environments to
 ### Usage
 
 ```bash
-# Compare prod (master) against dev and test
-pac-ext audit --master prod --compare dev test
+# Compare prod (master) against specific environments
+pac-ext audit --master https://org-prod.crm.dynamics.com \
+              --compare https://org-dev.crm.dynamics.com \
+                        https://org-test.crm.dynamics.com
 
-# Compare dev against test only
-pac-ext audit --master dev --compare test
+# Compare against ALL configured environments (ENV_TEST_URL_XX + ENV_PROD_URL_XX)
+pac-ext audit --all --save
 
 # Save report to HTML and JSON (opens in browser)
 pac-ext audit --master prod --compare dev test --save
 
 # Deep mode - compare table columns (type, length, required, precision)
 pac-ext audit --master prod --compare dev test --deep
-
-# Use full URLs
-pac-ext audit --master https://org-prod.crm.dynamics.com \
-              --compare https://org-dev.crm.dynamics.com \
-                        https://org-test.crm.dynamics.com
 ```
 
 ### What Gets Compared
@@ -203,6 +217,69 @@ When using `--deep`, the audit also compares table column schemas:
 | Precision | Decimal precision for number fields |
 
 This helps identify schema drift where column properties have changed between environments.
+
+## User Audit
+
+Audit user permissions, role assignments, and team memberships across environments.
+
+### Usage
+
+```bash
+# Audit users in a single environment
+pac-ext user-audit -e https://org.crm.dynamics.com --save
+
+# Audit ALL configured environments
+pac-ext user-audit --all --save
+```
+
+### What Gets Audited
+
+| Category | Details |
+|----------|---------|
+| Direct Roles | Security roles assigned directly to users |
+| Team Memberships | Teams users belong to (Owner, Access, AAD Security, AAD Office) |
+| Team Roles | Roles inherited through team membership |
+| System Admin | Users with System Administrator role |
+| System Customizer | Users with System Customizer role |
+| Disabled Users | Users with disabled status |
+
+### HTML Report Features
+
+- **Tabbed interface** - All Users, System Admins, System Customizers, Disabled
+- **Team details** - Shows team names and types per user
+- **Hide disabled toggle** - Filter out disabled users from view
+- **Role breakdown** - Direct vs team-inherited roles
+
+## Solution Delete & Purge
+
+Delete solutions from one or more environments.
+
+### Usage
+
+```bash
+# Preview what would be deleted (dry run)
+pac-ext solution-delete MySolution --all --dry-run
+
+# Delete from all environments
+pac-ext solution-delete MySolution --all
+
+# Deep purge - delete components before solution (for unmanaged)
+pac-ext solution-purge MySolution -e https://test.crm.dynamics.com --dry-run
+```
+
+## Role Cleanup
+
+Remove direct role assignments from users (roles should be assigned via teams).
+
+### Usage
+
+```bash
+# Preview what would be removed
+pac-ext role-cleanup -e https://org.crm.dynamics.com --dry-run
+
+# Remove direct role assignments
+pac-ext role-cleanup -e https://org.crm.dynamics.com --save
+```
 
 ### Sample Output
 
@@ -247,11 +324,43 @@ Environment Variables
 - **PCF live data** - Develop PCF components with real Dataverse data
 - **Environment audit** - Compare solutions, variables, plugins across environments
 - **Deep audit mode** - Compare table column schemas (type, length, required, precision)
+- **User audit** - Audit user permissions, roles, and team memberships
+- **Role cleanup** - Remove direct role assignments (best practice: use teams)
+- **Solution delete/purge** - Delete solutions across multiple environments
 - **Browser auth** - No client secrets needed, authenticates as you
+- **HTML reports** - Rich reports with Power Platform branding
+
+## Environment Configuration
+
+Configure multiple environments using numbered variables in `.env`:
+
+```env
+# Named environments
+ENV_DEV_URL=https://yourorg-dev.crm.dynamics.com
+ENV_TEST_URL=https://yourorg-test.crm.dynamics.com
+ENV_PROD_URL=https://yourorg.crm.dynamics.com
+
+# Numbered test environments (for --all flag)
+ENV_TEST_URL_01=https://org-uat1.crm.dynamics.com
+ENV_TEST_URL_02=https://org-uat2.crm.dynamics.com
+ENV_TEST_URL_03=https://org-uat3.crm.dynamics.com
+
+# Numbered prod environments (for --all flag)
+ENV_PROD_URL_01=https://org-prod-region1.crm.dynamics.com
+ENV_PROD_URL_02=https://org-prod-region2.crm.dynamics.com
+```
+
+Then use `--all` to run commands across all numbered environments:
+
+```bash
+pac-ext audit --all --save
+pac-ext user-audit --all --save
+pac-ext solution-delete MySolution --all --dry-run
+```
 
 ## Requirements
 
-- Node.js 16+
+- Node.js 18+
 - Power Platform CLI (`pac`) installed and in PATH
 - Valid Power Platform environment access
 
